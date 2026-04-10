@@ -38,7 +38,7 @@ class TrainingPeaksUploader(FileSystemEventHandler):
         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
         wait = WebDriverWait(driver, 30)
 
-       try:
+    try:
             logging.info("🔑 Acessando TrainingPeaks...")
             driver.get("https://app.trainingpeaks.com/login")
             
