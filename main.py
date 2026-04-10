@@ -28,14 +28,24 @@ class TPHandler(FileSystemEventHandler):
     def __init__(self):
         self.username = os.getenv("TP_USERNAME")
         self.password = os.getenv("TP_PASS")
+        self.processed_files = set() # Evita processar o mesmo arquivo várias vezes
 
-    def on_created(self, event):
-        # Filtra arquivos FIT que não sejam diretórios
+    def on_any_event(self, event):
+        # Ignora diretórios e eventos de deleção
+        if event.is_directory or event.event_type == 'deleted':
+            return
+            
         filename = os.path.basename(event.src_path)
-        if not event.is_directory and "-RUNNING.fit" in filename:
-            logging.info(f"🏃 Novo treino detectado no Drive: {filename}")
-            # Aguarda 10s para o Rclone estabilizar o arquivo na VM
-            time.sleep(10)
+        
+        # Filtro: Contém "-RUNNING.fit" (case insensitive) e não foi processado
+        if "-running.fit" in filename.lower() and filename not in self.processed_files:
+            logging.info(f"⚡ Evento '{event.event_type}' detectado para: {filename}")
+            
+            # Adiciona ao set para não repetir o upload no mesmo ciclo
+            self.processed_files.add(filename)
+            
+            # Aguarda o arquivo terminar de ser escrito/sincronizado
+            time.sleep(15) 
             self.upload_to_tp(event.src_path)
 
     def upload_to_tp(self, file_path):
