@@ -43,41 +43,49 @@ class TPHandler(FileSystemEventHandler):
             self.upload_to_tp(event.src_path)
 
     def upload_to_tp(self, file_path):
-        logging.info("🚀 Iniciando processo de upload para o TrainingPeaks...")
+        logging.info("🚀 Iniciando processo de upload (Modo Camuflagem iPhone)...")
         driver = None
         
         try:
             chrome_options = Options()
-            # Camuflagem: Sem modo headless explícito para o Cloudflare não bloquear
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
             chrome_options.add_argument("--disable-gpu")
-            chrome_options.add_argument("--window-size=1920,1080")
             
-            # Remove a flag de automação que os sites detectam
+            # --- CONFIGURAÇÃO DE EMULAÇÃO MOBILE (iPhone) ---
+            mobile_emulation = {
+                "deviceMetrics": { "width": 390, "height": 844, "pixelRatio": 3.0 },
+                "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
+            }
+            chrome_options.add_experimental_option("mobileEmulation", mobile_emulation)
+            
+            # Esconde rastros de automação
             chrome_options.add_argument("--disable-blink-features=AutomationControlled")
             chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
             chrome_options.add_experimental_option('useAutomationExtension', False)
             
-            # User-Agent de alta fidelidade
-            chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
-            
             chrome_options.binary_location = "/usr/bin/google-chrome"
 
-            logging.info("🔧 Iniciando navegador via Monitor Virtual...")
+            logging.info("🔧 Inicializando driver com perfil Mobile...")
             service = Service(ChromeDriverManager().install())
             driver = webdriver.Chrome(service=service, options=chrome_options)
             
-            # Script extra para esconder o webdriver no navegador
+            # Script extra para remover o objeto navigator.webdriver
             driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
             wait = WebDriverWait(driver, 60)
 
+            # 1. Primeiro vai ao Google para criar um histórico/referer
+            logging.info("🌍 Passando pelo Google para 'aquecer' o IP...")
+            driver.get("https://www.google.com")
+            time.sleep(3)
+
+            # 2. Tenta o acesso ao TrainingPeaks
             logging.info("🔑 Acessando TrainingPeaks...")
             driver.get("https://app.trainingpeaks.com/login")
             
-            # Pausa para o site carregar sem pressa (bypass block)
-            time.sleep(8)
+            # Pausa para o firewall analisar o "iPhone"
+            time.sleep(10)
 
             logging.info("⏳ Localizando campos de login...")
             username_field = wait.until(EC.element_to_be_clickable((By.ID, "username")))
@@ -90,9 +98,10 @@ class TPHandler(FileSystemEventHandler):
             driver.execute_script("arguments[0].click();", submit_button)
             
             logging.info("⏳ Aguardando Dashboard...")
+            # Em mobile, o seletor pode ser ligeiramente diferente, mas mantemos o padrão por enquanto
             wait.until(EC.presence_of_element_located((By.CLASS_NAME, "calendar-container")))
             
-            logging.info("📤 Dashboard OK! Enviando arquivo...")
+            logging.info("📤 Enviando arquivo FIT...")
             upload_input = driver.find_element(By.CSS_SELECTOR, "input[type='file']")
             upload_input.send_keys(os.path.abspath(file_path))
             
@@ -105,7 +114,7 @@ class TPHandler(FileSystemEventHandler):
                 try:
                     path = os.path.expanduser("~/tp_sync/erro_debug.png")
                     driver.save_screenshot(path)
-                    logging.info(f"📸 Screenshot salva em {path}")
+                    logging.info(f"📸 Screenshot de erro salva em {path}")
                 except: pass
         finally:
             if driver:
@@ -123,7 +132,7 @@ if __name__ == "__main__":
         observer.schedule(event_handler, watch_path, recursive=False)
         
         print("\n" + "="*40)
-        print("🖥️  SERVIDOR SYNC ATIVO (Modo Camuflado)")
+        print("🖥️  SERVIDOR SYNC (ESTRATÉGIA IPHONE)")
         print(f"📂 Monitorando: {watch_path}")
         print("="*40 + "\n")
         
