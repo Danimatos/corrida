@@ -54,27 +54,30 @@ class TPHandler(FileSystemEventHandler):
         
         try:
             chrome_options = Options()
-            chrome_options.add_argument("--headless=new") # Modo headless atualizado
+            chrome_options.add_argument("--headless=new")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
             chrome_options.add_argument("--disable-gpu")
-            chrome_options.add_argument("--disable-extensions")
-            chrome_options.add_argument("--remote-debugging-port=9222")
             chrome_options.add_argument("--window-size=1920,1080")
             chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
             
-            logging.info("🔧 Instalando/Verificando ChromeDriver...")
-            service = Service(ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=service, options=chrome_options)
+            # Ajuste de Ouro: Aponta para o Chrome que acabamos de testar no terminal
+            chrome_options.binary_location = "/usr/bin/google-chrome"
+
+            logging.info("🔧 Tentando abrir o navegador Chrome...")
             
-            # Define timeout implícito para ajudar em máquinas lentas
-            driver.implicitly_wait(10)
+            # Usaremos o service padrão apontando para o binário do sistema
+            service = Service(executable_path="/usr/bin/chromedriver") # Pode precisar instalar o chromedriver
+            
+            # Se o comando acima der erro, tente apenas:
+            # service = Service(ChromeDriverManager().install())
+            
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            logging.info("🌍 Navegador aberto com sucesso!")
+
+            driver.get("https://app.trainingpeaks.com/login")
             wait = WebDriverWait(driver, 60)
 
-            logging.info("🔑 Acessando TrainingPeaks...")
-            driver.get("https://app.trainingpeaks.com/login")
-            
-            # Se chegar aqui, o navegador abriu!
             logging.info("⏳ Aguardando campos de login...")
             username_field = wait.until(EC.element_to_be_clickable((By.ID, "username")))
             
@@ -85,7 +88,7 @@ class TPHandler(FileSystemEventHandler):
             submit_button = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
             driver.execute_script("arguments[0].click();", submit_button)
             
-            logging.info("⏳ Aguardando Dashboard...")
+            logging.info("⏳ Aguardando Dashboard (pode demorar na VM)...")
             wait.until(EC.presence_of_element_located((By.CLASS_NAME, "calendar-container")))
             
             logging.info("📤 Dashboard carregado! Enviando arquivo...")
@@ -99,16 +102,12 @@ class TPHandler(FileSystemEventHandler):
             logging.error(f"❌ Erro detectado: {e}")
             if driver:
                 try:
-                    # Tenta salvar com caminho absoluto
-                    screenshot_path = os.path.expanduser("~/tp_sync/erro_debug.png")
-                    driver.save_screenshot(screenshot_path)
-                    logging.error(f"📸 Screenshot salva em: {screenshot_path}")
-                except Exception as ex:
-                    logging.error(f"⚠️ Não foi possível salvar screenshot: {ex}")
+                    driver.save_screenshot(os.path.expanduser("~/tp_sync/erro_debug.png"))
+                    logging.info("📸 Screenshot salva em ~/tp_sync/erro_debug.png")
+                except: pass
         finally:
             if driver:
                 driver.quit()
-                logging.info("🔒 Sessão encerrada.")
 
 if __name__ == "__main__":
     # Carrega caminho do .env
