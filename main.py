@@ -61,20 +61,17 @@ class TPHandler(FileSystemEventHandler):
             chrome_options.add_argument("--window-size=1920,1080")
             chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
             
-            # Ajuste de Ouro: Aponta para o Chrome que acabamos de testar no terminal
+            # Força o Selenium a usar o Chrome oficial que testamos no terminal
             chrome_options.binary_location = "/usr/bin/google-chrome"
 
-            logging.info("🔧 Tentando abrir o navegador Chrome...")
+            logging.info("🔧 Gerenciando ChromeDriver automaticamente...")
             
-            # Usaremos o service padrão apontando para o binário do sistema
-            service = Service(executable_path="/usr/bin/chromedriver") # Pode precisar instalar o chromedriver
-            
-            # Se o comando acima der erro, tente apenas:
-            # service = Service(ChromeDriverManager().install())
+            # Voltamos ao Manager, que é mais inteligente para resolver caminhos
+            service = Service(ChromeDriverManager().install())
             
             driver = webdriver.Chrome(service=service, options=chrome_options)
             logging.info("🌍 Navegador aberto com sucesso!")
-
+            
             driver.get("https://app.trainingpeaks.com/login")
             wait = WebDriverWait(driver, 60)
 
