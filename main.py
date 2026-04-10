@@ -33,7 +33,7 @@ class TrainingPeaksUploader(FileSystemEventHandler):
     def upload_process(self, file_path):
         chrome_options = Options()
         # Remova o '--headless' se quiser ver o robô trabalhando na primeira vez
-        chrome_options.add_argument("--headless") 
+        #chrome_options.add_argument("--headless") 
         
         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
         wait = WebDriverWait(driver, 30)
