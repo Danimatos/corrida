@@ -49,51 +49,59 @@ class TPHandler(FileSystemEventHandler):
             self.upload_to_tp(event.src_path)
 
     def upload_to_tp(self, file_path):
-        logging.info("🚀 Iniciando processo de upload para o TrainingPeaks...")
-        driver = None # Inicializa como None para evitar erro de escopo no 'finally'
+        logging.info("🚀 Iniciando processo de upload...")
+        driver = None
         
         try:
-            # Configurações do Chrome para rodar em servidor de 1GB RAM
             chrome_options = Options()
             chrome_options.add_argument("--headless")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
             chrome_options.add_argument("--disable-gpu")
             chrome_options.add_argument("--window-size=1920,1080")
+            # Adiciona um User-Agent de navegador real
+            chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
             
-            # Inicialização do Driver
-            logging.info("🔧 Preparando o WebDriver...")
             service = Service(ChromeDriverManager().install())
             driver = webdriver.Chrome(service=service, options=chrome_options)
-            wait = WebDriverWait(driver, 45)
+            wait = WebDriverWait(driver, 60) # Aumentado para 60s
 
-            # Login
-            logging.info("🔑 Acessando TrainingPeaks e realizando login...")
+            logging.info("🔑 Acessando TrainingPeaks...")
             driver.get("https://app.trainingpeaks.com/login")
             
-            wait.until(EC.presence_of_element_located((By.ID, "username"))).send_keys(self.username)
-            driver.find_element(By.ID, "password").send_keys(self.password)
-            driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
+            # Espera explícita pelo campo de username usando múltiplos seletores (garantia)
+            logging.info("⏳ Aguardando campos de login...")
+            username_field = wait.until(EC.element_to_be_clickable((By.ID, "username")))
             
-            # Espera o Dashboard carregar (calendário)
-            logging.info("⏳ Aguardando carregamento do Dashboard...")
+            logging.info("✍️ Preenchendo credenciais...")
+            username_field.send_keys(self.username)
+            driver.find_element(By.ID, "password").send_keys(self.password)
+            
+            # Tenta clicar no botão de submit
+            submit_button = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+            driver.execute_script("arguments[0].click();", submit_button) # Clique via JS é mais garantido
+            
+            logging.info("⏳ Aguardando Dashboard pós-login...")
+            # Espera o calendário ou a URL mudar
             wait.until(EC.presence_of_element_located((By.CLASS_NAME, "calendar-container")))
             
-            # Upload do arquivo
-            logging.info("📤 Enviando arquivo FIT...")
+            logging.info("📤 Dashboard carregado! Enviando arquivo...")
             upload_input = driver.find_element(By.CSS_SELECTOR, "input[type='file']")
             upload_input.send_keys(os.path.abspath(file_path))
             
-            # Tempo para o TP processar o arquivo antes de fechar o navegador
-            time.sleep(15) 
-            logging.info(f"✅ SUCESSO: {os.path.basename(file_path)} enviado com sucesso!")
+            time.sleep(20) 
+            logging.info(f"✅ SUCESSO: {os.path.basename(file_path)} enviado.")
             
         except Exception as e:
+            # Tira um print da tela se der erro (ajuda MUITO a depurar na VM)
+            if driver:
+                driver.save_screenshot("erro_upload.png")
+                logging.error(f"📸 Screenshot do erro salva como erro_upload.png")
             logging.error(f"❌ FALHA no processo: {e}")
         finally:
             if driver:
                 driver.quit()
-                logging.info("🔒 Sessão do navegador encerrada.")
+                logging.info("🔒 Sessão encerrada.")
 
 if __name__ == "__main__":
     # Carrega caminho do .env
