@@ -60,9 +60,9 @@ class TrainingPeaksUploader(FileSystemEventHandler):
             time.sleep(10)
             logging.info(f"✅ FINALIZADO: {os.path.basename(file_path)} já está no seu TrainingPeaks.")
             
-        except Exception as e:
+    except Exception as e:
             logging.error(f"❌ Erro durante o upload: {e}")
-        finally:
+    finally:
             driver.quit()
 
 if __name__ == "__main__":
