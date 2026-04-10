@@ -12,72 +12,102 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from dotenv import load_dotenv
 
-# Configuração de Logs para você acompanhar no VS Code
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+# --- CONFIGURAÇÃO DE LOGS ---
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("tp_sync.log"),
+        logging.StreamHandler()
+    ]
+)
+
 load_dotenv()
 
-class TrainingPeaksUploader(FileSystemEventHandler):
+class TPHandler(FileSystemEventHandler):
     def __init__(self):
-        self.username = os.getenv("TP_USERNAME") 
+        self.username = os.getenv("TP_USERNAME")
         self.password = os.getenv("TP_PASS")
 
     def on_created(self, event):
-        # Filtro rigoroso pelo padrão de nome enviado
+        # Filtra arquivos FIT que não sejam diretórios
         filename = os.path.basename(event.src_path)
         if not event.is_directory and "-RUNNING.fit" in filename:
-            logging.info(f"🏃 Treino de corrida detectado: {filename}")
-            # Aguarda 3 segundos para o Google Drive terminar de sincronizar o arquivo totalmente
-            time.sleep(3)
-            self.upload_process(event.src_path)
+            logging.info(f"🏃 Novo treino detectado no Drive: {filename}")
+            # Aguarda 10s para o Rclone estabilizar o arquivo na VM
+            time.sleep(10)
+            self.upload_to_tp(event.src_path)
 
-    def upload_process(self, file_path):
-        chrome_options = Options()
-        # Remova o '--headless' se quiser ver o robô trabalhando na primeira vez
-        #chrome_options.add_argument("--headless") 
+    def upload_to_tp(self, file_path):
+        logging.info("🚀 Iniciando processo de upload para o TrainingPeaks...")
+        driver = None # Inicializa como None para evitar erro de escopo no 'finally'
         
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-        wait = WebDriverWait(driver, 30)
+        try:
+            # Configurações do Chrome para rodar em servidor de 1GB RAM
+            chrome_options = Options()
+            chrome_options.add_argument("--headless")
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--window-size=1920,1080")
+            
+            # Inicialização do Driver
+            logging.info("🔧 Preparando o WebDriver...")
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            wait = WebDriverWait(driver, 45)
 
-    try:
-            logging.info("🔑 Acessando TrainingPeaks...")
+            # Login
+            logging.info("🔑 Acessando TrainingPeaks e realizando login...")
             driver.get("https://app.trainingpeaks.com/login")
             
-            # Localiza o campo de username (o ID no HTML do TP ainda costuma ser 'username')
             wait.until(EC.presence_of_element_located((By.ID, "username"))).send_keys(self.username)
             driver.find_element(By.ID, "password").send_keys(self.password)
             driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
             
-            # Espera carregar o calendário (garante que logou)
+            # Espera o Dashboard carregar (calendário)
             logging.info("⏳ Aguardando carregamento do Dashboard...")
             wait.until(EC.presence_of_element_located((By.CLASS_NAME, "calendar-container")))
             
-            # Upload via input de arquivo
-            logging.info("📤 Realizando upload do arquivo FIT...")
+            # Upload do arquivo
+            logging.info("📤 Enviando arquivo FIT...")
             upload_input = driver.find_element(By.CSS_SELECTOR, "input[type='file']")
             upload_input.send_keys(os.path.abspath(file_path))
             
-            # O TP precisa de alguns segundos para processar o arquivo após o envio
-            time.sleep(10)
-            logging.info(f"✅ FINALIZADO: {os.path.basename(file_path)} já está no seu TrainingPeaks.")
+            # Tempo para o TP processar o arquivo antes de fechar o navegador
+            time.sleep(15) 
+            logging.info(f"✅ SUCESSO: {os.path.basename(file_path)} enviado com sucesso!")
             
-    except Exception as e:
-            logging.error(f"❌ Erro durante o upload: {e}")
-    finally:
-            driver.quit()
+        except Exception as e:
+            logging.error(f"❌ FALHA no processo: {e}")
+        finally:
+            if driver:
+                driver.quit()
+                logging.info("🔒 Sessão do navegador encerrada.")
 
 if __name__ == "__main__":
-    path = os.getenv("DRIVE_PATH")
-    event_handler = TrainingPeaksUploader()
-    observer = Observer()
-    observer.schedule(event_handler, path, recursive=False)
+    # Carrega caminho do .env
+    watch_path = os.getenv("DRIVE_PATH")
     
-    print(f"--- MONITOR DE TREINOS ATIVO ---")
-    print(f"Pasta: {path}")
-    observer.start()
-    
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        observer.stop()
-    observer.join()
+    if not watch_path:
+        logging.error("🛑 Erro: Variável DRIVE_PATH não encontrada no .env")
+    elif not os.path.exists(watch_path):
+        logging.error(f"🛑 Erro: O caminho {watch_path} não existe. Verifique o Rclone.")
+    else:
+        event_handler = TPHandler()
+        observer = Observer()
+        observer.schedule(event_handler, watch_path, recursive=False)
+        
+        print("\n" + "="*40)
+        print("🖥️  SERVIDOR DE SINCRONIZAÇÃO ATIVO")
+        print(f"📂 Monitorando: {watch_path}")
+        print("="*40 + "\n")
+        
+        observer.start()
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            observer.stop()
+            logging.info("🛑 Servidor parado pelo usuário.")
+        observer.join()
