@@ -49,6 +49,35 @@ Usamos o **Intervals.icu** (plataforma neutra sediada na África do Sul/Europa c
 
 ---
 
+## 💻 Onde os scripts rodam? (Ambientes e Requisitos)
+
+Uma dúvida muito comum é: *"Onde exatamente esse código precisa ficar rodando?"*
+
+Este projeto é um serviço leve em **Python 3**. Ele **não roda dentro do relógio**, mas sim em um dispositivo conectado à internet que faz a ponte entre as nuvens da Huawei, do Intervals.icu e do TrainingPeaks.
+
+### 🔑 O "Pulo do Gato" da Autenticação no TrainingPeaks
+O TrainingPeaks não disponibiliza API pública gratuita para atletas e usa forte proteção contra robôs (Cloudflare / captchas). Para contornar isso de forma 100% segura e sem salvar senhas em arquivos de texto:
+* O bot se conecta ao **Google Chrome** via **Chrome DevTools Protocol (CDP na porta 9222)**.
+* Você faz login no site do TrainingPeaks no Chrome **uma única vez**. O bot aproveita essa sessão já logada para consultar a planilha e enviar os arquivos FIT.
+
+---
+
+### 🖥️ Escolha o seu cenário de uso:
+
+#### Opção A: Celular Android Antigo como Servidor Doméstico 24/7 (Recomendado) 🌟
+Sabe aquele celular Android antigo (mesmo com tela trincada) encostado na gaveta?
+* Ele consome quase nada de energia (< 2 Watts) e pode ficar conectado ao Wi-Fi ligado na tomada direto.
+* O Chrome roda nele com a sessão do TrainingPeaks aberta.
+* O script Python pode rodar direto dentro do celular (usando o app gratuito **Termux**), funcionando como um servidor independente 24 horas por dia.
+* Você também pode rodar o Python no seu PC apontando para o IP do celular na rede local via **ADB Wi-Fi** (`192.168.x.x:5555`).
+
+#### Opção B: No seu Computador (PC / Notebook — Windows, Linux ou Mac)
+* Você roda o script no seu computador de uso pessoal.
+* Basta abrir o Chrome no computador, efetuar o login no TrainingPeaks e disparar o script.
+* Pode rodar sob demanda (`python run_sync.py`), ficar rodando em segundo plano enquanto você usa o PC (`--loop`), ou ser agendado no **Agendador de Tarefas do Windows** / **Cron do Linux**.
+
+---
+
 ## 📋 Receita de Bolo: Passo a Passo Completo
 
 ### Passo 1: Conectar o Huawei Health ao Intervals.icu
