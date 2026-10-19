@@ -218,10 +218,20 @@ def sync_planned_workouts() -> None:
         workout_day = w.get("workoutDay")[:10]
         start_date_local = f"{workout_day}T07:00:00"
 
+        # Formata a data do TP (DD/MM/YYYY) para incluir no título do treino
+        try:
+            day_obj = datetime.strptime(workout_day, "%Y-%m-%d")
+            formatted_date = day_obj.strftime("%d/%m/%Y")
+        except Exception:
+            formatted_date = workout_day
+
+        # Garante que o nome do treino exiba a data da planilha (ex: "Semana Recovery 20/10/2026")
+        workout_name = f"{title} {formatted_date}" if formatted_date not in title else title
+
         # Converte para descrição Intervals/Huawei
         intervals_desc = convert_tp_workout(w)
         if not intervals_desc:
-            logging.warning("Treino %s (%s) não gerou descrição compatível.", tp_id, title)
+            logging.warning("Treino %s (%s) não gerou descrição compatível.", tp_id, workout_name)
             continue
 
         intervals_auth = ("API_KEY", API_KEY)
@@ -231,29 +241,36 @@ def sync_planned_workouts() -> None:
             # Já sincronizado anteriormente
             saved_event_id = db[tp_id].get("intervals_id")
             last_desc = db[tp_id].get("description", "")
-            if last_desc != intervals_desc:
-                # O treinador alterou o treino no TP! Atualiza no Intervals
-                logging.info("Atualizando treino modificado: %s (%s)", title, workout_day)
+            last_title = db[tp_id].get("title", "")
+            if last_desc != intervals_desc or last_title != workout_name:
+                # O treinador alterou o treino no TP ou o nome precisa ser atualizado
+                logging.info("Atualizando treino: %s (%s)", workout_name, workout_day)
                 update_url = f"{events_url}/{saved_event_id}"
-                put_res = requests.put(update_url, auth=intervals_auth, json={"description": intervals_desc}, timeout=15)
+                put_res = requests.put(
+                    update_url,
+                    auth=intervals_auth,
+                    json={"description": intervals_desc, "name": workout_name},
+                    timeout=15
+                )
                 if put_res.status_code in (200, 201):
+                    db[tp_id]["title"] = workout_name
                     db[tp_id]["description"] = intervals_desc
                     db[tp_id]["last_sync"] = datetime.now().isoformat()
                     save_synced_db(db)
                     send_telegram(
                         f"🔄 <b>Treino Atualizado pelo Treinador!</b>\n"
-                        f"🏃‍♂️ <b>{title}</b> ({workout_day})\n"
+                        f"🏃‍♂️ <b>{workout_name}</b>\n"
                         f"Atualizado no Intervals.icu e Huawei Watch GT4."
                     )
             continue
 
         # Novo treino encontrado! Cria no Intervals.icu
-        logging.info("Sincronizando novo treino: %s (%s)...", title, workout_day)
+        logging.info("Sincronizando novo treino: %s (%s)...", workout_name, workout_day)
         payload = {
             "start_date_local": start_date_local,
             "category": "WORKOUT",
             "type": "Run",
-            "name": title,
+            "name": workout_name,
             "description": intervals_desc
         }
 
@@ -262,10 +279,10 @@ def sync_planned_workouts() -> None:
             if c_res.status_code in (200, 201):
                 created_data = c_res.json()
                 created_id = created_data.get("id")
-                logging.info("Treino %s criado com sucesso no Intervals! ID: %s", title, created_id)
+                logging.info("Treino %s criado com sucesso no Intervals! ID: %s", workout_name, created_id)
 
                 db[tp_id] = {
-                    "title": title,
+                    "title": workout_name,
                     "date": workout_day,
                     "intervals_id": created_id,
                     "description": intervals_desc,
@@ -275,7 +292,7 @@ def sync_planned_workouts() -> None:
 
                 send_telegram(
                     f"🏃‍♂️ <b>Novo Treino Prescrito!</b>\n"
-                    f"📌 <b>{title}</b>\n"
+                    f"📌 <b>{workout_name}</b>\n"
                     f"📅 Data: <b>{workout_day}</b>\n"
                     f"⌚ Sincronizado automaticamente para o <b>Huawei Watch GT4</b>!"
                 )
