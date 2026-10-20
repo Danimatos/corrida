@@ -148,7 +148,7 @@ def get_tp_session():
 
 
 def upload_to_tp_api(fit_bytes: bytes, filename: str, workout_day: str) -> dict:
-    """Faz o upload direto usando a API REST do TrainingPeaks via cookie de sessão."""
+    """Faz o upload direto usando a API REST do TrainingPeaks via cookie de sessão, com retentativas automáticas."""
     auth_cookie, tp_athlete_id = get_tp_session()
 
     url = f"https://tpapi.trainingpeaks.com/fitness/v7/athletes/{tp_athlete_id}/workouts/filedata"
@@ -168,16 +168,28 @@ def upload_to_tp_api(fit_bytes: bytes, filename: str, workout_day: str) -> dict:
         "uploadClient": "TP Web App"
     }
 
-    res = requests.post(url, headers=headers, json=payload, timeout=30)
-    if res.status_code in (200, 201):
-        data = res.json()
-        logging.info("Upload aceito pela API do TrainingPeaks: %s", data)
-        return data
-    elif res.status_code == 422 and "already been uploaded" in res.text:
-        logging.info("Atividade já existente no TrainingPeaks (422): %s", filename)
-        return {"status": "already_uploaded"}
-    else:
-        raise RuntimeError(f"Erro na API TP ({res.status_code}): {res.text[:200]}")
+    max_attempts = 3
+    last_err = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            res = requests.post(url, headers=headers, json=payload, timeout=35)
+            if res.status_code in (200, 201):
+                data = res.json()
+                logging.info("Upload aceito pela API do TrainingPeaks: %s", data)
+                return data
+            elif res.status_code == 422 and "already been uploaded" in res.text:
+                logging.info("Atividade já existente no TrainingPeaks (422): %s", filename)
+                return {"status": "already_uploaded"}
+            else:
+                raise RuntimeError(f"Erro na API TP ({res.status_code}): {res.text[:200]}")
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as conn_err:
+            last_err = conn_err
+            logging.warning("Instabilidade na conexão com o TP (tentativa %d/%d): %s", attempt, max_attempts, conn_err)
+            if attempt < max_attempts:
+                time.sleep(3 * attempt)
+            else:
+                raise last_err
 
 
 def sync_recent_runs() -> None:
