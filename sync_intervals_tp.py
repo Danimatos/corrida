@@ -39,6 +39,8 @@ logging.basicConfig(
 ATHLETE_ID = os.getenv("INTERVALS_ATHLETE_ID", "i551380")
 API_KEY = os.getenv("INTERVALS_API_KEY")
 TP_DEFAULT_ATHLETE_ID = os.getenv("TP_ATHLETE_ID", "5175936")
+TP_USERNAME = os.getenv("TP_USERNAME")
+TP_PASS = os.getenv("TP_PASS")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 ADB_TARGET = os.getenv("ANDROID_ADB_TARGET", "127.0.0.1:5555")
@@ -132,6 +134,43 @@ def get_tp_session():
             if c.get("name") == "Production_tpAuth":
                 auth_cookie = c.get("value")
                 break
+
+        if not auth_cookie and TP_USERNAME and TP_PASS:
+            logging.info("Sessão do TrainingPeaks expirada. Tentando login automático no Chrome...")
+            login_url = "https://home.trainingpeaks.com/login?ReturnUrl=https%3A%2F%2Fapp.trainingpeaks.com%2F"
+            send_cmd("Page.navigate", {"url": login_url})
+            time.sleep(4)
+
+            u_clean = TP_USERNAME.strip()
+            p_clean = TP_PASS.strip()
+            fill_js = f"""
+            (function() {{
+                var u = document.getElementById('Username');
+                var p = document.getElementById('Password');
+                var btn = document.getElementById('btnSubmit');
+                if (u && p && btn) {{
+                    u.value = {json.dumps(u_clean)};
+                    u.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    u.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                    p.value = {json.dumps(p_clean)};
+                    p.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    p.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                    btn.click();
+                    return true;
+                }}
+                return false;
+            }})()
+            """
+            eval_res = send_cmd("Runtime.evaluate", {"expression": fill_js, "returnByValue": True})
+            if eval_res.get("result", {}).get("result", {}).get("value"):
+                logging.info("Formulário de login submetido. Aguardando cookies...")
+                time.sleep(6)
+                cookies_res = send_cmd("Network.getCookies")
+                for c in cookies_res.get("result", {}).get("cookies", []):
+                    if c.get("name") == "Production_tpAuth":
+                        auth_cookie = c.get("value")
+                        logging.info("Login automático realizado com sucesso!")
+                        break
 
         if not auth_cookie:
             raise RuntimeError("Cookie Production_tpAuth não encontrado no Chrome.")
