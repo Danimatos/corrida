@@ -160,6 +160,12 @@ def convert_tp_workout(workout: dict) -> str:
     items = struct.get("structure", [])
     primary_metric = struct.get("primaryIntensityMetric", "percentOfThresholdHr")
 
+    # Se o treino contiver 'pace' ou 'vo2' no título, ou se a métrica no TP for percentOfThresholdPace,
+    # trata como treino baseado em pace para não converter erradamente em FC.
+    title = workout.get("title", "").lower()
+    if "pace" in title or "vo2" in title or primary_metric == "percentOfThresholdPace":
+        primary_metric = "percentOfThresholdPace"
+
     lines = []
     for item in items:
         itype = item.get("type")
