@@ -130,13 +130,24 @@ def convert_step(step: dict, primary_metric: str) -> str:
         if primary_metric == "percentOfThresholdHr":
             hr_min = round(TP_LTHR * (t_min / 100.0))
             hr_max = round(TP_LTHR * (t_max / 100.0))
+            p_min, p_max = bpm_to_intervals_lthr(hr_min, hr_max)
+            target_str = f"{p_min}-{p_max}% LTHR"
+        elif primary_metric == "percentOfThresholdPace":
+            p_min = round(t_min)
+            p_max = round(t_max) if t_max is not None else p_min
+            if p_min == p_max:
+                target_str = f"{p_min}% Pace"
+            else:
+                target_str = f"{p_min}-{p_max}% Pace"
         else:
             hr_min, hr_max = map_pace_to_bpm(t_min, t_max)
-
-        p_min, p_max = bpm_to_intervals_lthr(hr_min, hr_max)
-        target_str = f"{p_min}-{p_max}% LTHR"
+            p_min, p_max = bpm_to_intervals_lthr(hr_min, hr_max)
+            target_str = f"{p_min}-{p_max}% LTHR"
     else:
-        target_str = "81-99% LTHR"
+        if primary_metric == "percentOfThresholdPace":
+            target_str = "70-80% Pace"
+        else:
+            target_str = "81-99% LTHR"
 
     line = f"- {dur_str} {target_str} intensity={intensity}"
     if name and not any(k in name.lower() for k in ("warmup", "cooldown")):
