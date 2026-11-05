@@ -215,7 +215,14 @@ def sync_planned_workouts() -> None:
     try:
         res = requests.get(url, headers=headers, timeout=20)
         if res.status_code != 200:
-            logging.error("Erro na API do TP (%d): %s", res.status_code, res.text[:200])
+            if res.status_code == 404:
+                logging.error(
+                    "Erro 404 na API do TP: Atleta ID '%s' não encontrado ou sem permissão. "
+                    "Verifique se o TP_ATHLETE_ID no seu arquivo .env está correto (deve ser o ID numérico da sua conta).",
+                    tp_athlete_id
+                )
+            else:
+                logging.error("Erro na API do TP (%d): %s", res.status_code, res.text[:200])
             return
         workouts = res.json()
     except Exception as e:

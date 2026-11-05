@@ -38,7 +38,8 @@ logging.basicConfig(
 
 ATHLETE_ID = os.getenv("INTERVALS_ATHLETE_ID", "i551380")
 API_KEY = os.getenv("INTERVALS_API_KEY")
-TP_DEFAULT_ATHLETE_ID = os.getenv("TP_ATHLETE_ID", "5175936")
+TP_ATHLETE_ID_ENV = os.getenv("TP_ATHLETE_ID")
+TP_DEFAULT_ATHLETE_ID = TP_ATHLETE_ID_ENV if (TP_ATHLETE_ID_ENV and TP_ATHLETE_ID_ENV != "your_tp_athlete_id_here") else None
 TP_USERNAME = os.getenv("TP_USERNAME")
 TP_PASS = os.getenv("TP_PASS")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -176,10 +177,30 @@ def get_tp_session():
             raise RuntimeError("Cookie Production_tpAuth não encontrado no Chrome.")
 
         user_eval = send_cmd("Runtime.evaluate", {
-            "expression": f"document.querySelector('input[type=file]') ? (document.querySelector('input[type=file]').__reactFiber$ ? {TP_DEFAULT_ATHLETE_ID} : {TP_DEFAULT_ATHLETE_ID}) : {TP_DEFAULT_ATHLETE_ID}",
+            "expression": """(() => {
+                try {
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const k = localStorage.key(i);
+                        const v = localStorage.getItem(k);
+                        if (v && v.includes("athleteId")) {
+                            const parsed = JSON.parse(v);
+                            if (parsed.athleteId) return String(parsed.athleteId);
+                            if (parsed.user && parsed.user.athleteId) return String(parsed.user.athleteId);
+                        }
+                    }
+                } catch(e) {}
+                return null;
+            })()""",
             "returnByValue": True
         })
-        tp_athlete_id = user_eval.get("result", {}).get("result", {}).get("value") or TP_DEFAULT_ATHLETE_ID
+        auto_id = user_eval.get("result", {}).get("result", {}).get("value")
+        tp_athlete_id = TP_DEFAULT_ATHLETE_ID or auto_id
+
+        if not tp_athlete_id:
+            raise RuntimeError(
+                "TP_ATHLETE_ID não configurado no .env e não foi possível detectar automaticamente no Chrome. "
+                "Configure seu ID numérico do TrainingPeaks no arquivo .env."
+            )
 
         return auth_cookie, tp_athlete_id
     finally:
