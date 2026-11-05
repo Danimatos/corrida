@@ -87,26 +87,63 @@ def run_adb(*args: str, check: bool = True) -> str:
     return res.stdout.strip()
 
 
+def check_cdp_ready() -> bool:
+    """Verifica se o Chrome DevTools já está acessível localmente (ex: Chrome no próprio PC ou porta já encaminhada)."""
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{CDP_PORT}/json/version", headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=1.5) as res:
+            return res.status == 200
+    except Exception:
+        return False
+
+
 def ensure_device_connected() -> None:
+    global ADB_TARGET
     state = run_adb("get-state", check=False)
-    if state != "device":
-        logging.info("Tentando reconectar ADB em %s...", ADB_TARGET)
-        run_adb("connect", ADB_TARGET, check=False)
-        time.sleep(2)
-        if run_adb("get-state", check=False) != "device":
-            raise RuntimeError(f"Dispositivo ADB indisponível: {ADB_TARGET}")
+    if state == "device":
+        return
+
+    logging.info("Tentando reconectar ADB em %s...", ADB_TARGET)
+    run_adb("connect", ADB_TARGET, check=False)
+    time.sleep(2)
+    if run_adb("get-state", check=False) == "device":
+        return
+
+    # Se falhou, verifica se existe outro dispositivo conectado via ADB (ex: celular plugado no USB do PC)
+    try:
+        res = subprocess.run(["adb", "devices"], capture_output=True, text=True, errors="replace")
+        lines = [l.strip() for l in res.stdout.splitlines() if l.strip() and not l.startswith("List of")]
+        devices = [l.split()[0] for l in lines if "\tdevice" in l or " device" in l]
+        if devices:
+            ADB_TARGET = devices[0]
+            logging.info("Dispositivo ADB detectado automaticamente: %s", ADB_TARGET)
+            return
+    except Exception:
+        pass
+
+    raise RuntimeError(
+        f"Dispositivo ADB indisponível ({ADB_TARGET}).\n"
+        "• Se estiver rodando no computador conectando no celular via Wi-Fi: "
+        "coloque o IP do seu celular no .env (ex: ANDROID_ADB_TARGET=192.168.1.X:5555).\n"
+        "• Se o celular estiver no cabo USB no computador: "
+        "ative a Depuração USB no celular e rode 'adb devices'.\n"
+        "• Se quiser rodar 100% no computador usando o Chrome do próprio PC (sem celular): "
+        "inicie o Chrome com depuração remota: chrome.exe --remote-debugging-port=9222"
+    )
 
 
 def prepare_chrome_cdp() -> None:
     run_adb("forward", f"tcp:{CDP_PORT}", "localabstract:chrome_devtools_remote")
-    run_adb("shell", "am", "start", "-n", "com.android.chrome/com.google.android.apps.chrome.Main")
+    run_adb("shell", "am", "start", "-n", "com.android.chrome/com.google.android.apps.chrome.Main", check=False)
     time.sleep(2)
 
 
 def get_tp_session():
     """Obtém cookie de autenticação e ID do atleta a partir da sessão ativa no Chrome."""
-    ensure_device_connected()
-    prepare_chrome_cdp()
+    # Se o Chrome já estiver rodando localmente com a porta CDP ativa (ex: Chrome no próprio PC), conecta direto sem precisar do ADB
+    if not check_cdp_ready():
+        ensure_device_connected()
+        prepare_chrome_cdp()
 
     targets = json.load(urllib.request.urlopen(f"http://127.0.0.1:{CDP_PORT}/json"))
     pages = [item for item in targets if item.get("type") == "page"]
